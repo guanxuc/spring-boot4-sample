@@ -1,0 +1,89 @@
+name: Auto cherry-pick to branches
+
+on:
+  pull_request_target:
+    types:
+      - closed
+      - labeled
+
+jobs:
+  backport:
+    name: Backport to Target Branch
+    runs-on: ubuntu-latest
+    if: >
+      github.event.pull_request.merged == true &&
+      (
+        github.event.action == 'closed' || 
+        (github.event.action == 'labeled' && startsWith(github.event.label.name, 'Auto-cherry-pick-to-'))
+      )
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.REPO_TOKEN }}
+          fetch-depth: 0
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Set up Git
+        env:
+          BOT_NAME: 'auto-cherry-pick.bot'
+          BOT_EMAIL: 'auto-cherry-pick@agentscope.io'
+        run: |
+          git config --global user.name '${{ env.BOT_NAME }}'
+          git config --global user.email '${{ env.BOT_EMAIL }}'    
+
+      - name: Cherry-pick to branches
+        env:
+          GITHUB_TOKEN: ${{ secrets.REPO_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          ORIGINAL_SHA: ${{ github.event.pull_request.head.sha }}
+          CURRENT_BRANCH: ${{ github.event.pull_request.base.ref }}
+          LABEL_PREFIX: 'Auto-cherry-pick-to-'
+        run: |
+          # 获取所有标签 JSON
+          labels='${{ toJSON(github.event.pull_request.labels) }}'
+          
+          # 动态提取符合前缀的标签，并去除前缀得到分支名
+          target_branches=$(echo "$labels" | jq -r --arg prefix "$LABEL_PREFIX" '.[] | select(.name | startswith($prefix)) | .name | ltrimstr($prefix)')
+
+          if [ -z "$target_branches" ]; then
+            echo "ℹ️ No matching backport labels found (prefix: $LABEL_PREFIX). Exiting."
+            exit 0
+          fi
+          
+          echo "✅ Found target branches: $target_branches"
+          
+          # 遍历每个目标分支
+          for branch in $target_branches; do
+            echo "🔄 Processing branch: $branch"
+          
+            # 检查分支是否存在
+            if ! git rev-parse --verify "origin/$branch" >/dev/null 2>&1; then
+              echo "::warning title=Branch not found::Skipping branch '$branch' - does not exist in remote"
+              continue
+            fi
+          
+            # 跳过当前分支 (不需要 cherry-pick 到自己)
+            if [ "$branch" == "$CURRENT_BRANCH" ]; then
+              echo "⏭️ Skipping current branch: $branch"
+              continue
+            fi
+
+            git checkout -B "$branch" "origin/$branch"
+          
+            # 执行 cherry-pick
+            if git cherry-pick "$ORIGINAL_SHA" -x; then 
+              echo "✅ Successfully cherry-picked $ORIGINAL_SHA to $branch"
+              git commit --amend -o -m "$PR_TITLE"
+              git push origin "$branch"
+              echo "::notice title=Success::Cherry-picked to $branch successfully"
+            else
+              echo "::error title=Cherry-pick conflict::Conflict occurred on branch $branch"
+              git cherry-pick --abort 2>/dev/null || true
+              exit 1
+            fi
+          done
