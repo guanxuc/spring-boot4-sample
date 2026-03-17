@@ -30,7 +30,7 @@ jobs:
       - name: Set up Git
         env:
           BOT_NAME: 'auto-cherry-pick.bot'
-          BOT_EMAIL: 'auto-cherry-pick@agentscope.io'
+          BOT_EMAIL: 'noreply@github.com'
         run: |
           git config --global user.name '${{ env.BOT_NAME }}'
           git config --global user.email '${{ env.BOT_EMAIL }}'    
