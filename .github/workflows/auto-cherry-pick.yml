@@ -8,7 +8,7 @@ on:
 
 jobs:
   backport:
-    name: Backport to Target Branch
+    name: Cherry-pick to Target Branch
     runs-on: ubuntu-latest
     if: >
       github.event.pull_request.merged == true &&
@@ -37,7 +37,6 @@ jobs:
 
       - name: Cherry-pick to branches
         env:
-          GITHUB_TOKEN: ${{ secrets.REPO_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           ORIGINAL_SHA: ${{ github.event.pull_request.head.sha }}
