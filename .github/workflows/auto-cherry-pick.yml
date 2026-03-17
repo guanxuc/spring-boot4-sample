@@ -2,6 +2,9 @@
 # Description: Automatically cherry-picks merged PRs to target branches based on labels
 # Trigger: When a PR is merged with a label matching pattern "Auto-cherry-pick-to-XXX"
 # Action: Cherry-picks the PR commits to the specified target branch XXX
+# Support two ways to auto cherry-pick:
+# 1. Add label "Auto-cherry-pick-to-XXX" to the PR, then merge PR
+# 2. Merge PR, then add label "Auto-cherry-pick-to-XXX" to the merged PR
 
 name: Auto Cherry-Pick
 
@@ -73,6 +76,12 @@ jobs:
             # Skip current branch
             if [ "$branch" == "$CURRENT_BRANCH" ]; then
               echo "⏭️ Skipping current branch: $branch"
+              continue
+            fi
+          
+            # Check if PR is already merged to target branch
+            if git merge-base --is-ancestor "$ORIGINAL_SHA" "origin/$branch"; then
+              echo "⏭️ Skipping branch '$branch' - PR is already merged to this branch"
               continue
             fi
 
