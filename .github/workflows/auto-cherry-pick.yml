@@ -1,4 +1,9 @@
-name: Auto cherry-pick to branches
+# Workflow: Auto Cherry-Pick
+# Description: Automatically cherry-picks merged PRs to target branches based on labels
+# Trigger: When a PR is merged with a label matching pattern "Auto-cherry-pick-to-XXX"
+# Action: Cherry-picks the PR commits to the specified target branch XXX
+
+name: Auto Cherry-Pick
 
 on:
   pull_request_target:
@@ -8,7 +13,7 @@ on:
 
 jobs:
   backport:
-    name: Cherry-pick to Target Branch
+    name: Auto Cherry-Pick
     runs-on: ubuntu-latest
     if: >
       github.event.pull_request.merged == true &&
@@ -43,10 +48,10 @@ jobs:
           CURRENT_BRANCH: ${{ github.event.pull_request.base.ref }}
           LABEL_PREFIX: 'Auto-cherry-pick-to-'
         run: |
-          # 获取所有标签 JSON
+          # Get all labels to JSON string
           labels='${{ toJSON(github.event.pull_request.labels) }}'
           
-          # 动态提取符合前缀的标签，并去除前缀得到分支名
+          # Dynamically extract labels that match the prefix, and remove the prefix to get the branch name
           target_branches=$(echo "$labels" | jq -r --arg prefix "$LABEL_PREFIX" '.[] | select(.name | startswith($prefix)) | .name | ltrimstr($prefix)')
 
           if [ -z "$target_branches" ]; then
@@ -56,17 +61,16 @@ jobs:
           
           echo "✅ Found target branches: $target_branches"
           
-          # 遍历每个目标分支
-          for branch in $target_branches; do
+          for branch  in $target_branches; do
             echo "🔄 Processing branch: $branch"
           
-            # 检查分支是否存在
+            # Check if branch exists
             if ! git rev-parse --verify "origin/$branch" >/dev/null 2>&1; then
               echo "::warning title=Branch not found::Skipping branch '$branch' - does not exist in remote"
               continue
             fi
           
-            # 跳过当前分支 (不需要 cherry-pick 到自己)
+            # Skip current branch
             if [ "$branch" == "$CURRENT_BRANCH" ]; then
               echo "⏭️ Skipping current branch: $branch"
               continue
@@ -74,7 +78,7 @@ jobs:
 
             git checkout -B "$branch" "origin/$branch"
           
-            # 执行 cherry-pick
+            # Execute cherry-pick
             if git cherry-pick "$ORIGINAL_SHA" -x; then 
               echo "✅ Successfully cherry-picked $ORIGINAL_SHA to $branch"
               git commit --amend -o -m "$PR_TITLE"
